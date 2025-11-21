@@ -1,37 +1,56 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Importar el módulo de conexión a la base de datos
 const db = require('./config/db');
 
-// Importar las rutas
+// Importar rutas
+const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
-// const taskRoutes = require('./routes/taskRoutes'); // Para añadir después
-// const workerRoutes = require('./routes/workerRoutes'); // Para añadir después
-// const authRoutes = require('./routes/authRoutes'); // Para añadir después (login/registro/token)
+const workerRoutes = require('./routes/workerRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 
-
-// Middleware para parsear JSON
+// Middlewares
+app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 // Ruta de prueba
 app.get('/', (req, res) => {
-    res.send('¡Bienvenido al Backend de Tareas DonFrio (Node.js)!');
+    res.json({ 
+        message: 'Backend DonFrio funcionando!',
+        version: '1.0',
+        endpoints: {
+            auth: '/api/auth/login',
+            users: '/api/users',
+            workers: '/api/workers', 
+            tasks: '/api/tasks'
+        }
+    });
 });
 
-// Usar las rutas de usuario
-app.use('/users', userRoutes);
+// Usar rutas
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/workers', workerRoutes);
+app.use('/api/tasks', taskRoutes);
 
-// Iniciar el servidor SOLO después de conectar a la base de datos
+// Manejar rutas no encontradas
+app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Ruta no encontrada' });
+});
+
+// Iniciar servidor
 db.connect()
     .then(() => {
         app.listen(port, () => {
-            console.log(`Servidor Node.js escuchando en http://localhost:${port}`);
+            console.log(`🚀 Servidor DonFrio en http://localhost:${port}`);
+            console.log(`📱 Listo para React Native + Expo`);
         });
     })
     .catch(err => {
-        console.error('Fallo al conectar a la base de datos:', err.message);
-        process.exit(1); // Sale de la aplicación si no puede conectar a la DB
+        console.error('❌ Error base de datos:', err);
+        process.exit(1);
     });

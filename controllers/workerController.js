@@ -1,11 +1,20 @@
 const db = require('../config/db');
 
-// Obtiene el pool de conexiones
+// Obtiene el pool de conexiones CORREGIDO
 async function getWorkerPool() {
-    if (!db.getDB()) {
-        await db.connect();
+    try {
+        if (!db.getDB()) {
+            await db.connect();
+        }
+        const pool = db.getDB();
+        if (!pool) {
+            throw new Error('No se pudo obtener el pool de conexiones');
+        }
+        return pool;
+    } catch (error) {
+        console.error('Error en getWorkerPool:', error);
+        throw error;
     }
-    return db.getDB();
 }
 
 exports.createWorker = async (req, res) => {

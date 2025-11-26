@@ -1,8 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const { authenticateToken } = require('../middleware/authMiddleware');
 
+// Rutas públicas
 router.post('/login', authController.login);
-// router.post('/register', authController.register); // Si tienes una ruta de registro separada
+
+// Rutas protegidas (requieren autenticación)
+router.post('/register', authenticateToken, authController.register);
+router.get('/verify', authenticateToken, authController.verifyToken);
+router.get('/profile', authenticateToken, authController.getProfile);
 
 module.exports = router;

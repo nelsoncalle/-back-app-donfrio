@@ -1,155 +1,228 @@
 const db = require('../config/db');
 
-// Obtiene el pool de conexiones CORREGIDO
-async function getWorkerPool() {
+const workerController = {
+  // Crear un nuevo trabajador
+  createWorker: async (req, res) => {
     try {
-        if (!db.getDB()) {
-            await db.connect();
-        }
-        const pool = db.getDB();
-        if (!pool) {
-            throw new Error('No se pudo obtener el pool de conexiones');
-        }
-        return pool;
-    } catch (error) {
-        console.error('Error en getWorkerPool:', error);
-        throw error;
-    }
-}
-
-exports.createWorker = async (req, res) => {
-    const { name, contact_info } = req.body;
-
-    if (!name) {
-        return res.status(400).json({ message: 'El nombre del trabajador es requerido.' });
-    }
-
-    try {
-        const pool = await getWorkerPool();
-        const [result] = await pool.execute(
-            `INSERT INTO workers (name, contact_info, created_by_user_id) VALUES (?, ?, ?)`,
-            [name, contact_info, req.user.id] // req.user.id viene del middleware de autenticación
-        );
-
-        res.status(201).json({ 
-            message: 'Trabajador creado exitosamente', 
-            workerId: result.insertId 
+      const { name, contact_info } = req.body;
+      const created_by_user_id = req.user.id; // Del middleware de autenticación
+      
+      if (!name) {
+        return res.status(400).json({ 
+          error: 'El nombre es requerido' 
         });
+      }
 
-    } catch (error) {
-        console.error('Error al crear trabajador:', error);
-        res.status(500).json({ message: 'Error interno del servidor al crear trabajador.' });
-    }
-};
+      const query = `
+        INSERT INTO workers (name, contact_info, created_by_user_id) 
+        VALUES (?, ?, ?)
+      `;
+      
+      const [result] = await db.promise().execute(
+        query, 
+        [name, contact_info, created_by_user_id]
+      );
 
-exports.getWorkers = async (req, res) => {
-    try {
-        const pool = await getWorkerPool();
-        const [rows] = await pool.execute(`
-            SELECT w.*, u.username as created_by_username 
-            FROM workers w 
-            LEFT JOIN users u ON w.created_by_user_id = u.id 
-            ORDER BY w.name
-        `);
-        res.status(200).json(rows);
-    } catch (error) {
-        console.error('Error al obtener trabajadores:', error);
-        res.status(500).json({ message: 'Error interno del servidor al obtener trabajadores.' });
-    }
-};
-
-exports.getWorkerById = async (req, res) => {
-    const { id } = req.params;
-    try {
-        const pool = await getWorkerPool();
-        const [rows] = await pool.execute(`
-            SELECT w.*, u.username as created_by_username 
-            FROM workers w 
-            LEFT JOIN users u ON w.created_by_user_id = u.id 
-            WHERE w.id = ?
-        `, [id]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Trabajador no encontrado.' });
+      res.status(201).json({
+        message: 'Trabajador creado exitosamente',
+        workerId: result.insertId,
+        worker: {
+          id: result.insertId,
+          name,
+          contact_info,
+          created_by_user_id
         }
-        res.status(200).json(rows[0]);
+      });
     } catch (error) {
-        console.error('Error al obtener trabajador por ID:', error);
-        res.status(500).json({ message: 'Error interno del servidor al obtener trabajador.' });
+      console.error('Error creando trabajador:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
     }
-};
+  },
 
-exports.updateWorker = async (req, res) => {
-    const { id } = req.params;
-    const { name, contact_info } = req.body;
-    
+  // Obtener todos los trabajadores
+  getWorkers: async (req, res) => {
     try {
-        const pool = await getWorkerPool();
-        const [result] = await pool.execute(
-            `UPDATE workers SET name = ?, contact_info = ? WHERE id = ?`,
-            [name, contact_info, id]
-        );
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Trabajador no encontrado para actualizar.' });
-        }
-        
-        res.status(200).json({ message: 'Trabajador actualizado exitosamente.' });
+      const query = `
+        SELECT w.*, u.username as created_by 
+        FROM workers w
+        LEFT JOIN users u ON w.created_by_user_id = u.id
+        ORDER BY w.name ASC
+      `;
+      
+      const [workers] = await db.promise().execute(query);
+      
+      res.json({
+        message: 'Trabajadores obtenidos exitosamente',
+        count: workers.length,
+        workers
+      });
     } catch (error) {
-        console.error('Error al actualizar trabajador:', error);
-        res.status(500).json({ message: 'Error interno del servidor al actualizar trabajador.' });
+      console.error('Error obteniendo trabajadores:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
     }
-};
+  },
 
-exports.deleteWorker = async (req, res) => {
-    const { id } = req.params;
+  // Obtener un trabajador por ID
+  getWorkerById: async (req, res) => {
     try {
-        const pool = await getWorkerPool();
-        
-        // Verificar si el trabajador tiene tareas asignadas
-        const [tasks] = await pool.execute(
-            'SELECT COUNT(*) as taskCount FROM tasks WHERE assigned_to_worker_id = ?', 
-            [id]
-        );
-        
-        if (tasks[0].taskCount > 0) {
-            return res.status(400).json({ 
-                message: 'No se puede eliminar el trabajador porque tiene tareas asignadas.' 
-            });
-        }
-
-        const [result] = await pool.execute('DELETE FROM workers WHERE id = ?', [id]);
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Trabajador no encontrado para eliminar.' });
-        }
-        
-        res.status(200).json({ message: 'Trabajador eliminado exitosamente.' });
+      const { id } = req.params;
+      
+      const query = `
+        SELECT w.*, u.username as created_by 
+        FROM workers w
+        LEFT JOIN users u ON w.created_by_user_id = u.id
+        WHERE w.id = ?
+      `;
+      
+      const [workers] = await db.promise().execute(query, [id]);
+      
+      if (workers.length === 0) {
+        return res.status(404).json({ 
+          error: 'Trabajador no encontrado' 
+        });
+      }
+      
+      res.json({
+        message: 'Trabajador obtenido exitosamente',
+        worker: workers[0]
+      });
     } catch (error) {
-        console.error('Error al eliminar trabajador:', error);
-        res.status(500).json({ message: 'Error interno del servidor al eliminar trabajador.' });
+      console.error('Error obteniendo trabajador:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
     }
-};
+  },
 
-// Obtener trabajadores con estadísticas de tareas
-exports.getWorkersWithStats = async (req, res) => {
+  // Actualizar un trabajador
+  updateWorker: async (req, res) => {
     try {
-        const pool = await getWorkerPool();
-        const [rows] = await pool.execute(`
-            SELECT w.*, 
-                   COUNT(t.id) as total_tasks,
-                   SUM(CASE WHEN t.status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
-                   SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
-                   SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
-                   SUM(CASE WHEN t.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_tasks
-            FROM workers w
-            LEFT JOIN tasks t ON w.id = t.assigned_to_worker_id
-            GROUP BY w.id
-            ORDER BY w.name
-        `);
-        res.status(200).json(rows);
+      const { id } = req.params;
+      const { name, contact_info } = req.body;
+      
+      // Verificar si el trabajador existe
+      const checkQuery = 'SELECT id FROM workers WHERE id = ?';
+      const [existingWorkers] = await db.promise().execute(checkQuery, [id]);
+      
+      if (existingWorkers.length === 0) {
+        return res.status(404).json({ 
+          error: 'Trabajador no encontrado' 
+        });
+      }
+
+      const updateQuery = `
+        UPDATE workers 
+        SET name = ?, contact_info = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `;
+      
+      await db.promise().execute(updateQuery, [name, contact_info, id]);
+
+      res.json({
+        message: 'Trabajador actualizado exitosamente',
+        worker: {
+          id: parseInt(id),
+          name,
+          contact_info
+        }
+      });
     } catch (error) {
-        console.error('Error al obtener trabajadores con estadísticas:', error);
-        res.status(500).json({ message: 'Error interno del servidor al obtener estadísticas de trabajadores.' });
+      console.error('Error actualizando trabajador:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
     }
+  },
+
+  // Eliminar un trabajador
+  deleteWorker: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verificar si el trabajador existe
+      const checkQuery = 'SELECT id FROM workers WHERE id = ?';
+      const [existingWorkers] = await db.promise().execute(checkQuery, [id]);
+      
+      if (existingWorkers.length === 0) {
+        return res.status(404).json({ 
+          error: 'Trabajador no encontrado' 
+        });
+      }
+
+      // Verificar si el trabajador tiene tareas asignadas
+      const tasksQuery = 'SELECT id FROM tasks WHERE assigned_to_worker_id = ?';
+      const [tasks] = await db.promise().execute(tasksQuery, [id]);
+      
+      if (tasks.length > 0) {
+        return res.status(400).json({ 
+          error: 'No se puede eliminar el trabajador porque tiene tareas asignadas' 
+        });
+      }
+
+      const deleteQuery = 'DELETE FROM workers WHERE id = ?';
+      await db.promise().execute(deleteQuery, [id]);
+
+      res.json({
+        message: 'Trabajador eliminado exitosamente'
+      });
+    } catch (error) {
+      console.error('Error eliminando trabajador:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
+    }
+  },
+
+  // Obtener trabajadores con estadísticas de tareas
+  getWorkersWithStats: async (req, res) => {
+    try {
+      const query = `
+        SELECT 
+          w.id,
+          w.name,
+          w.contact_info,
+          COUNT(t.id) as total_tasks,
+          SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+          SUM(CASE WHEN t.status = 'pending' THEN 1 ELSE 0 END) as pending_tasks,
+          SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks
+        FROM workers w
+        LEFT JOIN tasks t ON w.id = t.assigned_to_worker_id
+        GROUP BY w.id, w.name, w.contact_info
+        ORDER BY w.name ASC
+      `;
+      
+      const [workers] = await db.promise().execute(query);
+      
+      // Calcular porcentajes
+      const workersWithStats = workers.map(worker => ({
+        ...worker,
+        completion_rate: worker.total_tasks > 0 
+          ? Math.round((worker.completed_tasks / worker.total_tasks) * 100) 
+          : 0
+      }));
+      
+      res.json({
+        message: 'Estadísticas de trabajadores obtenidas exitosamente',
+        count: workersWithStats.length,
+        workers: workersWithStats
+      });
+    } catch (error) {
+      console.error('Error obteniendo estadísticas de trabajadores:', error);
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
+    }
+  }
 };
+
+module.exports = workerController;

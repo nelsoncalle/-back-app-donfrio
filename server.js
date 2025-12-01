@@ -1,5 +1,22 @@
 const express = require('express');
 const cors = require('cors');
+const mysql = require('mysql2');
+
+// ✅ CONEXIÓN A LA BASE DE DATOS SIN CONTRASEÑA
+const db = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'bd_tareasdonfrio'
+});
+
+db.connect((err) => {
+    if (err) {
+        console.error('❌ Error conectando a la base de datos:', err);
+        return;
+    }
+    console.log('✅ Conectado a la base de datos MySQL');
+});
 
 // ✅ IMPORTAR RUTAS
 const authRoutes = require('./routes/authRoutes');
@@ -7,10 +24,9 @@ const userRoutes = require('./routes/userRoutes');
 const workerRoutes = require('./routes/workerRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 
-// ✅ INICIALIZAR APP PRIMERO
 const app = express();
 
-// ✅ CONFIGURAR MIDDLEWARES
+// ✅ CONFIGURAR CORS
 app.use(cors({
     origin: ['http://localhost:8081', 'exp://192.168.1.27:8081', 'http://192.168.1.27:8081'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -19,27 +35,23 @@ app.use(cors({
 
 app.use(express.json());
 
-// ✅ LOGGING DE PETICIONES (DESPUÉS de inicializar app)
+// ✅ LOGGING SIMPLE
 app.use((req, res, next) => {
-  console.log('📥 Petición recibida:', {
-    method: req.method,
-    url: req.url,
-    body: req.body,
-    time: new Date().toLocaleTimeString()
-  });
+  console.log(`📥 ${req.method} ${req.url}`);
   next();
 });
 
-// ✅ RUTAS DE PRUEBA
-app.get('/', (req, res) => {
-  res.json({ message: '✅ API funcionando!' });
-});
-
+// ✅ RUTA DE PRUEBA
 app.get('/api/test', (req, res) => {
-  res.json({ 
-    message: '✅ Backend conectado correctamente',
-    timestamp: new Date(),
-    status: 'online'
+  db.query('SELECT 1 + 1 AS result', (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error en BD' });
+    }
+    res.json({ 
+      message: '✅ Backend funcionando',
+      database: '✅ MySQL OK',
+      result: results[0].result
+    });
   });
 });
 
@@ -50,10 +62,7 @@ app.use('/api/workers', workerRoutes);
 app.use('/api/tareas', taskRoutes);
 
 // ✅ INICIAR SERVIDOR
-app.listen(3001, '0.0.0.0', () => {
-  console.log('🚀 Servidor en http://localhost:3001');
-  console.log('📱 Accesible desde: http://192.168.1.27:3001');
-  console.log('🔍 Test: http://192.168.1.27:3001/api/test');
-  console.log('📝 Tareas: http://192.168.1.27:3001/api/tareas');
-  console.log('✅ Conectado a la base de datos MySQL');
+const PORT = 3001;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('🚀 Servidor en puerto 3001');
 });

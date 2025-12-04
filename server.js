@@ -1,109 +1,98 @@
 const express = require('express');
 const cors = require('cors');
+const dotenv = require('dotenv');
 
-// ✅ IMPORTAR RUTAS
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Logs
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  if (req.method === 'POST' || req.method === 'PUT') {
+    console.log('📦 Body:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+// Importar rutas
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const workerRoutes = require('./routes/workerRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 
-const app = express();
-
-// ✅ CONFIGURAR CORS PARA EXPO
-app.use(cors({
-    origin: ['http://localhost:8081', 'exp://192.168.1.27:8081', 'http://192.168.1.27:8081'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-
-app.use(express.json());
-
-// ✅ LOGGING DETALLADO
-app.use((req, res, next) => {
-  console.log(`\n📥 ${req.method} ${req.url}`);
-  console.log('📦 Body:', req.body);
-  console.log('🔧 Headers:', req.headers);
-  next();
-});
-
-// ✅ RUTA DE PRUEBA MEJORADA
-app.get('/api/test', (req, res) => {
-  const db = require('./config/db');
-  db.query('SELECT 1 + 1 AS result')
-    .then(([results]) => {
-      res.json({ 
-        success: true,
-        message: '✅ Backend funcionando',
-        database: '✅ MySQL conectado',
-        result: results[0].result,
-        timestamp: new Date().toISOString()
-      });
-    })
-    .catch(err => {
-      console.error('❌ Error en BD:', err);
-      res.status(500).json({ 
-        success: false,
-        error: 'Error en conexión a BD',
-        details: err.message 
-      });
-    });
-});
-
-// ✅ RUTA PARA VERIFICAR TABLAS
-app.get('/api/db-check', (req, res) => {
-  const db = require('./config/db');
-  
-  db.query('SHOW TABLES')
-    .then(([tables]) => {
-      const tableNames = tables.map(row => Object.values(row)[0]);
-      res.json({
-        success: true,
-        tables: tableNames,
-        count: tableNames.length
-      });
-    })
-    .catch(err => {
-      res.status(500).json({ 
-        success: false,
-        error: 'Error obteniendo tablas',
-        details: err.message 
-      });
-    });
-});
-
-// ✅ USAR RUTAS
+// Usar rutas PRINCIPALES (inglés)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/workers', workerRoutes);
-app.use('/api/tareas', taskRoutes);
+app.use('/api/workers', workerRoutes);  // ✅ Principal
+app.use('/api/tasks', taskRoutes);      // ✅ Principal
 
-// ✅ MANEJO DE ERRORES
-app.use((err, req, res, next) => {
-  console.error('🔥 Error no manejado:', err);
-  res.status(500).json({ 
-    success: false,
-    error: 'Error interno del servidor',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
+// ✅ ALIAS EN ESPAÑOL (para compatibilidad con frontend existente)
+app.use('/api/trabajadores', workerRoutes);  // ✅ Alias
+app.use('/api/tareas', taskRoutes);          // ✅ Alias
+
+// Ruta de prueba
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    message: '✅ Backend funcionando',
+    timestamp: new Date().toISOString(),
+    rutas: {
+      trabajadores: ['/api/workers', '/api/trabajadores'],
+      tareas: ['/api/tasks', '/api/tareas'],
+      auth: '/api/auth'
+    }
   });
 });
 
-// ✅ RUTA NO ENCONTRADA
-app.use('*', (req, res) => {
+// Ruta raíz
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'API Gestor de Tareas Donfrío',
+    version: '1.0.0',
+    endpoints: {
+      trabajadores: ['/api/workers', '/api/trabajadores'],
+      tareas: ['/api/tasks', '/api/tareas'],
+      auth: '/api/auth'
+    }
+  });
+});
+
+// 404
+app.use((req, res) => {
   res.status(404).json({ 
-    success: false,
-    error: 'Ruta no encontrada: ' + req.originalUrl 
+    error: 'Ruta no encontrada',
+    suggested: {
+      trabajadores: ['/api/workers', '/api/trabajadores'],
+      tareas: ['/api/tasks', '/api/tareas']
+    }
   });
 });
 
-// ✅ INICIAR SERVIDOR
-const PORT = 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('\n🚀 =================================');
-  console.log(`✅ Servidor corriendo en puerto ${PORT}`);
-  console.log(`🌐 URL: http://192.168.1.27:${PORT}`);
-  console.log('📊 Para probar:');
-  console.log(`   • http://192.168.1.27:${PORT}/api/test`);
-  console.log(`   • http://192.168.1.27:${PORT}/api/db-check`);
-  console.log('=================================\n');
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('❌ Error:', err);
+  res.status(500).json({ 
+    error: 'Error interno del servidor',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Contacte al administrador'
+  });
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`📋 Endpoints disponibles:`);
+  console.log(`   http://localhost:${PORT}/`);
+  console.log(`   http://localhost:${PORT}/api/test`);
+  console.log(`   http://localhost:${PORT}/api/workers (y /api/trabajadores)`);
+  console.log(`   http://localhost:${PORT}/api/tasks (y /api/tareas)`);
+  console.log(`   http://localhost:${PORT}/api/auth/login`);
 });

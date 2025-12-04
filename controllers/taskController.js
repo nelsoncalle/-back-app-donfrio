@@ -1,137 +1,133 @@
+// controllers/taskController.js - VERSIÓN COMPLETA Y FUNCIONAL
 const db = require('../config/db');
 
-const taskController = {
-  // ✅ GET ALL TASKS - USAR TABLA tasks
-  getTasks: (req, res) => {
-    const query = 'SELECT * FROM tasks ORDER BY created_at DESC';
+// 1. Función para CREAR tarea
+exports.createTask = async (req, res) => {
+  try {
+    console.log('🎯 CREATE TASK - Datos recibidos:', req.body);
     
-    db.query(query, (err, results) => {
-      if (err) {
-        console.error('Error obteniendo tareas:', err);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-      res.json(results);
-    });
-  },
-
-  // ✅ CREATE TASK - USAR TABLA tasks
-  createTask: (req, res) => {
-    const { titulo, descripcion, id_trabajador, estado, fecha_limite, id_usuario } = req.body;
+    const { titulo, descripcion, fecha_limite, trabajador_id } = req.body;
     
-    console.log('📝 Creando tarea:', req.body);
-    
-    if (!titulo) {
-      return res.status(400).json({ error: 'El título es requerido' });
+    // Validación básica
+    if (!titulo || titulo.trim() === '') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'El título es requerido' 
+      });
     }
 
-    // ✅ USAR ESTRUCTURA DE TABLA tasks
+    // Mapear español → inglés (tu BD tiene columnas en inglés)
+    const title = titulo;
+    const description = descripcion || null;
+    const due_date = fecha_limite || null;
+    const assigned_to_worker_id = trabajador_id || null;
+    const created_by_user_id = 1; // Usuario nelson (id=1)
+
+    console.log('📝 Datos mapeados:', { 
+      title, description, due_date, assigned_to_worker_id, created_by_user_id 
+    });
+
+    // Query INSERT (columnas en INGLÉS como tu tabla)
     const query = `
-      INSERT INTO tasks (title, description, assigned_to_worker_id, status, due_date, created_by_user_id) 
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks 
+        (title, description, due_date, assigned_to_worker_id, created_by_user_id, status) 
+      VALUES (?, ?, ?, ?, ?, 'pending')
     `;
     
-    const values = [
-      titulo, // → title
-      descripcion || '', // → description  
-      id_trabajador || null, // → assigned_to_worker_id
-      estado || 'pending', // → status (usar estados en inglés)
-      fecha_limite || null, // → due_date
-      id_usuario || 1 // → created_by_user_id (temporal = 1)
-    ];
-
-    db.query(query, values, (err, results) => {
-      if (err) {
-        console.error('Error creando tarea:', err);
-        return res.status(500).json({ error: 'Error del servidor: ' + err.message });
+    const [result] = await db.execute(query, [
+      title, 
+      description, 
+      due_date, 
+      assigned_to_worker_id, 
+      created_by_user_id
+    ]);
+    
+    console.log('✅ Tarea creada. ID:', result.insertId);
+    
+    return res.status(201).json({
+      success: true,
+      message: 'Tarea creada exitosamente',
+      id: result.insertId,
+      task: {
+        id: result.insertId,
+        titulo: title,
+        descripcion: description,
+        fecha_limite: due_date,
+        trabajador_id: assigned_to_worker_id,
+        status: 'pending'
       }
-      
-      // Obtener la tarea recién creada
-      db.query('SELECT * FROM tasks WHERE id = ?', [results.insertId], (err, newTask) => {
-        if (err) {
-          console.error('Error obteniendo nueva tarea:', err);
-          return res.status(500).json({ error: 'Error del servidor' });
-        }
-        console.log('✅ Tarea creada:', newTask[0]);
-        res.status(201).json(newTask[0]);
+    });
+    
+  } catch (error) {
+    console.error('❌ ERROR en createTask:');
+    console.error('   Mensaje:', error.message);
+    console.error('   Código:', error.code);
+    console.error('   SQL:', error.sql);
+    
+    // Manejo de errores específicos
+    if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+      return res.status(400).json({
+        success: false,
+        error: 'El trabajador seleccionado no existe'
       });
-    });
-  },
-
-  // ✅ UPDATE TASK - USAR TABLA tasks
-  updateTask: (req, res) => {
-    const { id } = req.params;
-    const { titulo, descripcion, id_trabajador, estado, fecha_limite, id_usuario } = req.body;
-
-    const query = `
-      UPDATE tasks 
-      SET title = ?, description = ?, assigned_to_worker_id = ?, status = ?, due_date = ?, created_by_user_id = ?
-      WHERE id = ?
-    `;
+    }
     
-    const values = [
-      titulo, // → title
-      descripcion, // → description
-      id_trabajador, // → assigned_to_worker_id  
-      estado, // → status
-      fecha_limite, // → due_date
-      id_usuario || 1, // → created_by_user_id
-      id
-    ];
-
-    db.query(query, values, (err, results) => {
-      if (err) {
-        console.error('Error actualizando tarea:', err);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-      if (results.affectedRows === 0) {
-        return res.status(404).json({ error: 'Tarea no encontrada' });
-      }
-      res.json({ message: 'Tarea actualizada correctamente' });
-    });
-  },
-
-  // ✅ ELIMINAR TAREA - USAR TABLA tasks
-  deleteTask: (req, res) => {
-    const { id } = req.params;
-
-    db.query('DELETE FROM tasks WHERE id = ?', [id], (err, results) => {
-      if (err) {
-        console.error('Error eliminando tarea:', err);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-      if (results.affectedRows === 0) {
-        return res.status(404).json({ error: 'Tarea no encontrada' });
-      }
-      res.json({ message: 'Tarea eliminada correctamente' });
-    });
-  },
-
-  // ✅ MÉTODOS ADICIONALES - USAR TABLA tasks
-  getTasksByWorker: (req, res) => {
-    const { workerId } = req.params;
-    const query = 'SELECT * FROM tasks WHERE assigned_to_worker_id = ? ORDER BY created_at DESC';
-    
-    db.query(query, [workerId], (err, results) => {
-      if (err) {
-        console.error('Error obteniendo tareas por trabajador:', err);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-      res.json(results);
-    });
-  },
-
-  getTasksByStatus: (req, res) => {
-    const { status } = req.params;
-    const query = 'SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC';
-    
-    db.query(query, [status], (err, results) => {
-      if (err) {
-        console.error('Error obteniendo tareas por estado:', err);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-      res.json(results);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al crear tarea',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-module.exports = taskController;
+// 2. Función para OBTENER tareas
+exports.getTasks = async (req, res) => {
+  try {
+    console.log('🔍 GET TASKS llamado');
+    
+    // Query con alias español para frontend
+    const query = `
+      SELECT 
+        id,
+        title as titulo,
+        description as descripcion,
+        due_date as fecha_limite,
+        status,
+        assigned_to_worker_id as trabajador_id,
+        created_at,
+        updated_at
+      FROM tasks 
+      ORDER BY created_at DESC
+    `;
+    
+    const [tasks] = await db.execute(query);
+    
+    console.log(`✅ ${tasks.length} tareas encontradas`);
+    
+    return res.json({
+      success: true,
+      count: tasks.length,
+      data: tasks
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en getTasks:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener tareas'
+    });
+  }
+};
+
+// 3. Funciones adicionales (pueden implementarse después)
+exports.getTaskById = async (req, res) => {
+  res.status(501).json({ success: false, error: 'No implementado aún' });
+};
+
+exports.updateTask = async (req, res) => {
+  res.status(501).json({ success: false, error: 'No implementado aún' });
+};
+
+exports.deleteTask = async (req, res) => {
+  res.status(501).json({ success: false, error: 'No implementado aún' });
+};

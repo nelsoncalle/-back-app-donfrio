@@ -1,69 +1,79 @@
-// controllers/workerController.js - VERSIÓN CORRECTA
+// controllers/workerController.js
 const db = require('../config/db');
 
-// 1. Función para crear trabajador
-const createWorker = async (req, res) => {
+exports.createWorker = async (req, res) => {
   try {
-    const { nombre, email, telefono } = req.body;
+    console.log('========== CREAR TRABAJADOR ==========');
+    console.log('📥 Headers:', req.headers);
+    console.log('📥 Body recibido:', req.body);
+    console.log('📥 Método:', req.method);
+    console.log('📥 URL:', req.originalUrl);
     
-    console.log('📥 Datos recibidos:', { nombre, email, telefono });
+    const { name, contact_info } = req.body;
     
-    if (!nombre) {
-      return res.status(400).json({ 
+    console.log('📥 Datos parseados:', { name, contact_info });
+    
+    if (!name || name.trim() === '') {
+      console.log('❌ Error: Nombre vacío');
+      return res.status(400).json({
         success: false,
-        error: 'El nombre es requerido' 
+        message: 'El nombre del trabajador es requerido'
       });
     }
-
-    // Tu tabla tiene: name, contact_info
-    const contactInfo = email || telefono ? 
-      `Email: ${email || 'No proporcionado'}, Tel: ${telefono || 'No proporcionado'}` : 
-      null;
     
-    const userId = 1; // Usuario admin por defecto
+    // Usuario por defecto
+    const created_by_user_id = 1;
     
-    const query = `INSERT INTO workers (name, contact_info, created_by_user_id) VALUES (?, ?, ?)`;
-    const [result] = await db.execute(query, [nombre, contactInfo, userId]);
+    console.log('🔍 Ejecutando query SQL...');
+    const [result] = await db.execute(
+      'INSERT INTO workers (name, contact_info, created_by_user_id) VALUES (?, ?, ?)',
+      [name.trim(), contact_info || null, created_by_user_id]
+    );
     
-    console.log('✅ Trabajador creado, ID:', result.insertId);
+    console.log('✅ Trabajador insertado, ID:', result.insertId);
+    console.log('======================================');
     
     return res.status(201).json({
       success: true,
       message: 'Trabajador creado exitosamente',
-      id: result.insertId,
-      worker: { name: nombre, contact_info: contactInfo }
+      workerId: result.insertId
     });
     
   } catch (error) {
-    console.error('❌ Error en createWorker:', error.message);
-    return res.status(500).json({ 
+    console.error('❌ ERROR EN createWorker:', error);
+    console.error('❌ Stack trace:', error.stack);
+    console.error('❌ MySQL error code:', error.code);
+    return res.status(500).json({
       success: false,
-      error: 'Error al crear trabajador',
-      details: error.message
+      message: 'Error del servidor al crear trabajador',
+      error: error.message
     });
   }
 };
 
-// 2. Función para obtener trabajadores
-const getWorkers = async (req, res) => {
+// ✅ Función para obtener todos los trabajadores
+exports.getWorkers = async (req, res) => {
   try {
-    const [workers] = await db.execute('SELECT * FROM workers');
+    const [workers] = await db.execute('SELECT * FROM workers ORDER BY name');
+    
     return res.json({
       success: true,
       count: workers.length,
       data: workers
     });
+    
   } catch (error) {
-    console.error('Error obteniendo trabajadores:', error);
-    return res.status(500).json({ 
+    console.error('Error en getWorkers:', error);
+    return res.status(500).json({
       success: false,
-      error: 'Error al obtener trabajadores' 
+      message: 'Error del servidor al obtener trabajadores',
+      error: error.message
     });
   }
 };
 
-// 3. Función para obtener trabajador por ID
-const getWorkerById = async (req, res) => {
+// ✅ Función para obtener trabajador por ID (OPCIONAL)
+exports.getWorkerById = async (req, res) => {
   try {
     const { id } = req.params;
     const [workers] = await db.execute('SELECT * FROM workers WHERE id = ?', [id]);
@@ -71,7 +81,7 @@ const getWorkerById = async (req, res) => {
     if (workers.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'Trabajador no encontrado'
+        message: 'Trabajador no encontrado'
       });
     }
     
@@ -79,87 +89,49 @@ const getWorkerById = async (req, res) => {
       success: true,
       data: workers[0]
     });
+    
   } catch (error) {
-    console.error('Error obteniendo trabajador:', error);
-    return res.status(500).json({ 
+    console.error('Error en getWorkerById:', error);
+    return res.status(500).json({
       success: false,
-      error: 'Error al obtener trabajador' 
+      message: 'Error del servidor al obtener trabajador',
+      error: error.message
     });
   }
 };
 
-// 4. Función para actualizar trabajador
-const updateWorker = async (req, res) => {
+// ✅ Función para eliminar trabajador (OPCIONAL)
+exports.deleteWorker = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, email, telefono } = req.body;
     
-    if (!nombre) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'El nombre es requerido' 
-      });
-    }
-
-    const contactInfo = email || telefono ? 
-      `Email: ${email || 'No proporcionado'}, Tel: ${telefono || 'No proporcionado'}` : 
-      null;
+    // Verificar si el trabajador existe
+    const [existing] = await db.execute('SELECT * FROM workers WHERE id = ?', [id]);
     
-    const query = `UPDATE workers SET name = ?, contact_info = ? WHERE id = ?`;
-    const [result] = await db.execute(query, [nombre, contactInfo, id]);
-    
-    if (result.affectedRows === 0) {
+    if (existing.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'Trabajador no encontrado'
+        message: 'Trabajador no encontrado'
       });
     }
     
-    return res.json({
-      success: true,
-      message: 'Trabajador actualizado exitosamente'
-    });
-  } catch (error) {
-    console.error('Error actualizando trabajador:', error);
-    return res.status(500).json({ 
-      success: false,
-      error: 'Error al actualizar trabajador' 
-    });
-  }
-};
-
-// 5. Función para eliminar trabajador (cambiar estado si tuvieras, o eliminar)
-const deleteWorker = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const query = `DELETE FROM workers WHERE id = ?`;
-    const [result] = await db.execute(query, [id]);
-    
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Trabajador no encontrado'
-      });
-    }
+    // Eliminar el trabajador
+    await db.execute('DELETE FROM workers WHERE id = ?', [id]);
     
     return res.json({
       success: true,
       message: 'Trabajador eliminado exitosamente'
     });
+    
   } catch (error) {
-    console.error('Error eliminando trabajador:', error);
-    return res.status(500).json({ 
+    console.error('Error en deleteWorker:', error);
+    return res.status(500).json({
       success: false,
-      error: 'Error al eliminar trabajador' 
+      message: 'Error del servidor al eliminar trabajador',
+      error: error.message
     });
   }
 };
 
-// ✅ EXPORTA TODAS LAS FUNCIONES CORRECTAMENTE
-module.exports = {
-  createWorker,
-  getWorkers,
-  getWorkerById,
-  updateWorker,
-  deleteWorker
-};
+// ⚠️ NO exportes updateWorker si no lo vas a usar todavía
+// exports.updateWorker = async (req, res) => { ... }
